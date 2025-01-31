@@ -1,9 +1,10 @@
 import logging
 from pathlib import Path
+from database.models import K2SStatus
 
 logger = logging.getLogger(__name__)
 
-class VideoProcessor:
+class VideoManager:
     def __init__(self, db_manager, k2s_uploader, telegram_bot):
         self.db = db_manager
         self.k2s = k2s_uploader

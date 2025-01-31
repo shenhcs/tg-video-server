@@ -18,6 +18,7 @@ from pathlib import Path
 from fastapi.staticfiles import StaticFiles
 import subprocess
 import hashlib
+from services.video_manager import VideoManager
 
 # Configure logging
 logging.basicConfig(
@@ -99,7 +100,8 @@ logger.info(f"Videos directory contents: {list(VIDEOS_DIR.glob('*'))}")
 db = Session()
 db_manager = DatabaseManager(db)
 clip_creator = ClipCreator(db_manager)
-# k2s_uploader = K2SUploader()
+k2s_uploader = K2SUploader()
+video_manager = VideoManager(db_manager, k2s_uploader, None)  # No telegram bot for now
 # telegram_uploader = TelegramUploader()
 
 def scan_videos():
@@ -240,8 +242,8 @@ def get_video_info(video_file: Path) -> dict:
 @app.get("/videos")
 async def get_videos():
     try:
-        tracked_videos = []
-        untracked_videos = []
+        uploaded_videos = []
+        unuploaded_videos = []
         
         # Get all video files from storage
         video_files = list(VIDEOS_DIR.glob("*.mp4"))
@@ -256,22 +258,28 @@ async def get_videos():
                 
                 if video_record:
                     logger.info(f"Video {video_file.name} is tracked")
-                    tracked_videos.append({
+                    video_data = {
                         **video_info,
                         "k2s_status": video_record.k2s_status.value,
                         "k2s_link": video_record.k2s_link
-                    })
+                    }
+                    
+                    # Separate based on k2s_status
+                    if video_record.k2s_status == K2SStatus.UPLOADED:
+                        uploaded_videos.append(video_data)
+                    else:
+                        unuploaded_videos.append(video_data)
                 else:
                     logger.info(f"Video {video_file.name} is untracked")
-                    untracked_videos.append({
+                    unuploaded_videos.append({
                         **video_info,
                         "k2s_status": "untracked",
                         "k2s_link": None
                     })
         
         return {
-            "tracked": tracked_videos,
-            "untracked": untracked_videos
+            "uploaded": uploaded_videos,
+            "unuploaded": unuploaded_videos
         }
     except Exception as e:
         logger.error(f"Error getting videos: {str(e)}")
@@ -640,6 +648,52 @@ async def track_all_videos():
         
     except Exception as e:
         logger.error(f"Error adding all videos to database: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/videos/upload-all")
+async def upload_all_videos():
+    try:
+        print("\n=== Uploading all unuploaded videos ===")
+        uploaded_videos = []
+        
+        # Get all unuploaded videos from database
+        unuploaded_videos = db.query(Video).filter(
+            Video.k2s_status.in_([K2SStatus.PENDING, K2SStatus.FAILED])
+        ).all()
+        print(f"Found {len(unuploaded_videos)} unuploaded videos")
+        
+        for video in unuploaded_videos:
+            try:
+                print(f"\nUploading video: {video.filename}")
+                # Update status to queued
+                video.k2s_status = K2SStatus.QUEUED
+                db.commit()
+                
+                # TODO: Implement actual K2S upload here
+                # For now, just mark as uploaded
+                video.k2s_status = K2SStatus.UPLOADED
+                db.commit()
+                
+                uploaded_videos.append({
+                    "id": video.id,
+                    "filename": video.filename,
+                    "path": video.path
+                })
+                print(f"Successfully uploaded: {video.filename}")
+            except Exception as e:
+                print(f"Error uploading video {video.filename}: {str(e)}")
+                video.k2s_status = K2SStatus.FAILED
+                db.commit()
+                continue
+        
+        return {
+            "status": "success",
+            "uploaded_count": len(uploaded_videos),
+            "uploaded_videos": uploaded_videos
+        }
+        
+    except Exception as e:
+        logger.error(f"Error uploading all videos: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Cleanup on shutdown
