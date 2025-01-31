@@ -1,0 +1,21 @@
+{
+    "paths": {
+        "data_dir": "data",
+        "videos_dir": "storage/videos",
+        "clips_dir": "storage/clips",
+        "db_path": "data/db.sqlite",
+        "video_file": "video.mp4",
+        "links_file": "links.txt"
+    },
+    "video": {
+        "supported_formats": [".mp4", ".mkv", ".avi", ".mov"]
+    },
+    "telegram": {
+        "bot_token": "YOUR_BOT_TOKEN",
+        "channel_id": "YOUR_CHANNEL_ID"
+    },
+    "k2s": {
+        "username": "YOUR_K2S_USERNAME",
+        "password": "YOUR_K2S_PASSWORD"
+    }
+} 
